@@ -1,7 +1,7 @@
 # syndaemon
 Patched version of syndaemon that distinguishes Shift from other modifier keys.
 
-Added command line switch `-S` that acts like `-K` (ignore Modifier and Modifier+Key combos) but does not ignore Shift+Key combos.
+Added command line switch `-S` that acts like `-K` (ignore Modifier and Modifier+Key combos) but does not ignore Shift+Key combos. Note: works only with XRecord extension (`-R`)!
 
 Usage: `syndaemon -i 0.5 -S -R -d`
 

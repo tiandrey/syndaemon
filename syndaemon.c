@@ -57,6 +57,7 @@ static Bool pad_disabled
     /* internal flag, this does not correspond to device state */ ;
 static int ignore_modifier_combos;
 static int ignore_modifier_keys;
+static int shift_not_modifier;
 static int background;
 static const char *pid_file;
 static Display *display;
@@ -65,6 +66,7 @@ static Atom touchpad_off_prop;
 static enum TouchpadState previous_state;
 static enum TouchpadState disable_state = TouchpadOff;
 static int verbose;
+static int debug;
 
 #define KEYMAP_SIZE 32
 static unsigned char keyboard_mask[KEYMAP_SIZE];
@@ -73,7 +75,7 @@ static void
 usage(void)
 {
     fprintf(stderr,
-            "Usage: syndaemon [-i idle-time] [-m poll-delay] [-d] [-t] [-k]\n");
+            "Usage: syndaemon [-i idle-time] [-m poll-delay] [-d] [-t] [-k|-K|-S] [-R] [-v|-V]\n");
     fprintf(stderr,
             "  -i How many seconds to wait after the last key press before\n");
     fprintf(stderr, "     enabling the touchpad. (default is 2.0s)\n");
@@ -86,8 +88,10 @@ usage(void)
     fprintf(stderr,
             "  -k Ignore modifier keys when monitoring keyboard activity.\n");
     fprintf(stderr, "  -K Like -k but also ignore Modifier+Key combos.\n");
-    fprintf(stderr, "  -R Use the XRecord extension.\n");
+    fprintf(stderr, "  -S Like -K but does not ignore Shift+Key combos.\n");
+    fprintf(stderr, "  -R Use the XRecord extension instead of polling.\n");
     fprintf(stderr, "  -v Print diagnostic messages.\n");
+    fprintf(stderr, "  -V Print diagnostic and debug messages.\n");
     fprintf(stderr, "  -? Show this help message.\n");
     exit(1);
 }
@@ -338,18 +342,41 @@ xrecord_callback(XPointer closure, XRecordInterceptData * recorded_data)
         if ((xev->u.u.type == KeyPress) || (xev->u.u.type == KeyRelease)) {
             int i;
             int is_modifier = 0;
+            int is_shift = 0;
+
 
             cbres->key_event = 1;       /* remember, a key was pressed or released. */
 
-            /* test if it was a modifier */
-            for (i = 0; i < 8 * cbres->modifiers->max_keypermod; i++) {
+            /* test if it was Shift */
+            for (i = 0; i < 8; i++) {
                 KeyCode kc = cbres->modifiers->modifiermap[i];
 
                 if (kc == xev->u.u.detail) {
-                    is_modifier = 1;    /* yes, it is a modifier. */
+                    is_shift = 1;    /* yes, it is Shift. */
                     break;
                 }
             }
+
+            if (shift_not_modifier) {
+                cbres->key_event = 1 - is_shift; /* remember, a key was pressed or released, unless it was Shift. */
+            } else {
+                is_modifier = is_shift;
+            }
+
+            if (!is_modifier) {
+                /* test if it was another modifier */
+                for (i = 8; i < 8 * cbres->modifiers->max_keypermod; i++) {
+                    KeyCode kc = cbres->modifiers->modifiermap[i];
+
+                    if (kc == xev->u.u.detail) {
+                        is_modifier = 1;    /* yes, it is a modifier. */
+                        break;
+                    }
+                }
+            }
+
+            if (debug)
+                printf("KeyEvent: xev->u.u.detail = %d, is_modifier = %d, is_shift = %d\n", xev->u.u.detail, is_modifier, is_shift);
 
             if (is_modifier) {
                 if (xev->u.u.type == KeyPress) {
@@ -365,15 +392,17 @@ xrecord_callback(XPointer closure, XRecordInterceptData * recorded_data)
                             cbres->pressed_modifiers[i] = 0;
                 }
 
-            }
-            else {
+            } else {
                 /* remember, a non-modifier was pressed. */
-                cbres->non_modifier_event = 1;
+                cbres->non_modifier_event = 1 - is_shift;
             }
         }
 
         xev++;
     }
+
+    if (debug)
+        printf("CallbackEnd: key_event = %d, non_modifier_event = %d\n", cbres->key_event, cbres->non_modifier_event);
 
     XRecordFreeData(recorded_data);     /* cleanup */
 }
@@ -444,10 +473,8 @@ record_main_loop(Display * display, double idle_time)
              * from the connection queue so we don't get stuck. */
             while (XEventsQueued(dpy_data, QueuedAlready) > 0) {
                 XEvent event;
-
                 XNextEvent(dpy_data, &event);
-                fprintf(stderr, "bad event received, major opcode %d\n",
-                        event.type);
+                fprintf(stderr, "bad event received, major opcode %d\n", event.type);
             }
 
             if (!ignore_modifier_keys && cbres.key_event) {
@@ -529,9 +556,7 @@ dp_get_device(Display * dpy)
  unwind:
     XFree(properties);
     XFreeDeviceList(info);
-    if (!dev)
-        fprintf(stderr, "Unable to find a synaptics device.\n");
-    else if (error && dev) {
+    if (error && dev) {
         XCloseDevice(dpy, dev);
         dev = NULL;
     }
@@ -547,7 +572,7 @@ main(int argc, char *argv[])
     int use_xrecord = 0;
 
     /* Parse command line parameters */
-    while ((c = getopt(argc, argv, "i:m:dtp:kKR?v")) != EOF) {
+    while ((c = getopt(argc, argv, "i:m:dtp:kKSRvV?")) != EOF) {
         switch (c) {
         case 'i':
             idle_time = atof(optarg);
@@ -571,11 +596,20 @@ main(int argc, char *argv[])
             ignore_modifier_combos = 1;
             ignore_modifier_keys = 1;
             break;
+        case 'S':
+            ignore_modifier_combos = 1;
+            ignore_modifier_keys = 1;
+            shift_not_modifier = 1;
+            break;
         case 'R':
             use_xrecord = 1;
             break;
         case 'v':
             verbose = 1;
+            break;
+        case 'V':
+            verbose = 1;
+            debug = 1;
             break;
         case '?':
         default:
