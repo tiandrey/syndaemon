@@ -75,7 +75,7 @@ static void
 usage(void)
 {
     fprintf(stderr,
-            "Usage: syndaemon [-i idle-time] [-m poll-delay] [-d] [-t] [-k|-K|-S] [-R] [-v|-V]\n");
+            "Usage: syndaemon [-i idle-time] [-m poll-delay] [-d] [-t] [-k|-K] [-R] [-v|-V]\n");
     fprintf(stderr,
             "  -i How many seconds to wait after the last key press before\n");
     fprintf(stderr, "     enabling the touchpad. (default is 2.0s)\n");
@@ -87,8 +87,7 @@ usage(void)
             "  -t Only disable tapping and scrolling, not mouse movements.\n");
     fprintf(stderr,
             "  -k Ignore modifier keys when monitoring keyboard activity.\n");
-    fprintf(stderr, "  -K Like -k but also ignore Modifier+Key combos.\n");
-    fprintf(stderr, "  -S Like -K but does not ignore Shift+Key combos.\n");
+    fprintf(stderr, "  -K Like -k but also ignore Modifier+Key combos (does not ignore Shift+Key combos).\n");
     fprintf(stderr, "  -R Use the XRecord extension instead of polling.\n");
     fprintf(stderr, "  -v Print diagnostic messages.\n");
     fprintf(stderr, "  -V Print diagnostic and debug messages.\n");
@@ -572,7 +571,7 @@ main(int argc, char *argv[])
     int use_xrecord = 0;
 
     /* Parse command line parameters */
-    while ((c = getopt(argc, argv, "i:m:dtp:kKSRvV?")) != EOF) {
+    while ((c = getopt(argc, argv, "i:m:dtp:kKRvV?")) != EOF) {
         switch (c) {
         case 'i':
             idle_time = atof(optarg);
@@ -593,10 +592,6 @@ main(int argc, char *argv[])
             ignore_modifier_keys = 1;
             break;
         case 'K':
-            ignore_modifier_combos = 1;
-            ignore_modifier_keys = 1;
-            break;
-        case 'S':
             ignore_modifier_combos = 1;
             ignore_modifier_keys = 1;
             shift_not_modifier = 1;
